@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Créer sa Carte Mentale — Standalone (avec zoom/pan & drag)</title>
+    <style>
+        * { box-sizing: border-box; margin:0; padding:0; }
+        body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#222; min-height:100vh; padding:20px; }
+        .container { max-width:1200px; margin:0 auto; }
+        .header{ color:white; text-align:center; margin-bottom:18px }
+        .layout{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+        .panel{ background:white; padding:16px; border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,0.12); }
+        .input-group{ display:flex; gap:8px; margin-bottom:10px; }
+        input[type=text], select { padding:8px; border-radius:8px; border:1px solid #eee; flex:1 }
+        input[type=color]{ width:52px; height:40px; padding:4px; border-radius:8px; border:1px solid #ddd }
+        button { padding:8px 12px; border-radius:8px; border:none; background:#667eea; color:#fff; cursor:pointer; }
+        .btn-secondary{ background:#f0f0f0; color:#333; }
+        .btn-danger{ background:#ef4444; color:#fff; }
+        .item-list{ max-height:260px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+        .item-chip{ padding:8px; border-radius:8px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center; }
+        #canvas-container{ background:#f8f9fa; border:2px dashed #667eea; border-radius:10px; min-height:520px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative }
+        canvas{ display:block; width:100%; height:100%; touch-action: none; }
+        .legend{ display:flex; gap:12px; margin-top:12px; }
+        .legend-item{ display:flex; align-items:center; gap:4px }
+        .legend-dot{ width:12px; height:12px; border-radius:50%; }
+        .message{ margin-top:10px; }
+        .hint{ font-size:0.9em; color:#555; margin-top:8px }
+
+        /* Style pour le menu déroulant du bouton de dessin */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; border-radius: 8px; overflow: hidden; right: 0; }
+        .dropdown-content button { color: black; padding: 10px 12px; text-decoration: none; display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid #eee; border-radius: 0; }
+        .dropdown-content button:hover { background-color: #f1f1f1; }
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown-content button:last-child { border-bottom: none; }
+
+        @media (max-width: 1024px){ .layout{ grid-template-columns:1fr; } #canvas-container{ min-height:420px } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Atelier Carte Mentale — Standalone</h1>
+            <p style="opacity:0.9;color:#fff">Sauvegarde automatique • Couleurs par branche et par compétence • Export / Import • Drag & Drop</p>
+        </div>
+
+        <div class="layout">
+            <div class="panel">
+                <h2>Configuration</h2>
+
+                <div>
+                    <strong>Centre (Déplaçable)</strong>
+                    <div class="input-group">
+                        <input type="text" id="centerInput" placeholder="Ex: Mes compétences..." maxlength="60" />
+                        <button id="addCenterBtn">Ajouter</button>
+                    </div>
+                    <div id="centerDisplay" class="item-list"><div style="color:#999;font-style:italic">Aucun centre défini</div></div>
+                </div>
+
+                <hr style="margin:12px 0">
+
+                <div>
+                    <strong>Branches</strong>
+                    <div class="input-group">
+                        <input type="text" id="branchInput" placeholder="Ex: Techniques, Relationnelles" maxlength="30" />
+                        <input type="color" id="branchColor" value="#fbbf24" title="Couleur de la branche" />
+                        <button id="addBranchBtn">+ Branche</button>
+                    </div>
+                    <div id="branchList" class="item-list"><div style="color:#999;font-style:italic">Aucune branche</div></div>
+                </div>
+
+                <hr style="margin:12px 0">
+
+                <div>
+                    <strong>Compétences</strong>
+                    <div class="input-group">
+                        <input type="text" id="skillInput" placeholder="Ex: Excel, Communication..." maxlength="40" />
+                        <input type="color" id="skillColor" value="#10b981" title="Couleur de la compétence" />
+                        <select id="skillBranchSelect"></select>
+                        <select id="skillLevelSelect" title="Niveau">
+                            <option value="1">Débutant</option>
+                            <option value="2" selected>Intermédiaire</option>
+                            <option value="3">Avancé</option>
+                        </select>
+                        <button id="addSkillBtn">+ Compétence</button>
+                    </div>
+                    <div id="skillList" class="item-list"><div style="color:#999;font-style:italic">Aucune compétence</div></div>
+                </div>
+
+                <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
+                    <button id="loadExample" class="btn-secondary">Charger un exemple</button>
+                    <button id="gardenMode" class="btn-secondary">Mode Jardin (Hard/Soft)</button>
+                    <button id="clearStorage" class="btn-secondary">Effacer sauvegarde</button>
+                    
+                    <div class="dropdown">
+                        <button id="drawBtn">🎯 Redessiner / Mise à jour</button>
+                        <div class="dropdown-content">
+                            <button onclick="generateMindmap()">🔄 Mise à jour des liens</button>
+                            <button onclick="centerNodes()">🏠 Recentrer la carte</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="messageBox" class="message"></div>
+                <div class="hint">Astuce: clic-droit ou Ctrl+drag pour pan; roulette pour zoom; drag gauche pour déplacer un nœud (y compris le Centre). Cliquez sur **Redessiner** après avoir déplacé les nœuds pour resynchroniser les liens.</div>
+            </div>
+
+            <div class="panel">
+                <h2>Visualisation & Export</h2>
+                <div id="canvas-container">
+                    <canvas id="mindmapCanvas" width="1200" height="700"></canvas>
+                </div>
+
+                <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
+                    <button id="downloadPng">📥 Télécharger PNG</button>
+                    <button id="exportJson" class="btn-secondary">⬇️ Exporter JSON</button>
+                    <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer" class="btn-secondary">⬆️ Importer
+                        <input id="importFile" type="file" accept="application/json" style="display:none" />
+                    </label>
+                    <button id="resetAll" class="btn-danger">🔄 Réinitialiser</button>
+                </div>
+
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-dot" style="background:#667eea"></div><span>Centre</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div><span>Branches</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div><span>Compétences</span></div>
+                    <div class="legend-item" style="margin-left:12px"><span>Niveaux (Couleurs ci-dessous):</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--level1-color, #9CA3AF)"></div><span>Débutant</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--level2-color, #F59E0B)"></div><span>Intermédiaire</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--level3-color, #10B981)"></div><span>Avancé</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:18px" class="panel">
+            <h2>Notes</h2>
+            <p>Page autonome — pas besoin de React. Les données sont stockées localement (localStorage) et peuvent être exportées/importées au format JSON. Drag & drop et zoom/pan ajoutés. La taille des bulles des branches et compétences s'adapte désormais au texte. **Le nœud central est désormais déplaçable.**</p>
+        </div>
+    </div>
+
+<script>
+// Single storage key
+const STORAGE_KEY = 'mindmap_v2_data_standalone';
+
+// ====================================================================
+// >>> DÉBUT DES COULEURS DES NIVEAUX (À PERSONNALISER) <<<
+// Modifiez ces codes hexadécimaux pour changer les couleurs des pastilles
+const LEVEL_COLORS = {
+    1: '#9CA3AF', // NIVEAU 1 : Gris pour Débutant.
+    2: '#F59E0B', // NIVEAU 2 : Orange pour Intermédiaire.
+    3: '#10B981'  // NIVEAU 3 : Vert pour Avancé.
+};
+// >>> FIN DES COULEURS DES NIVEAUX (À PERSONNALISER) <<<
+// ====================================================================
+
+// App data
+let data = { center: null, branches: [], skills: {}, positions: {} };
+
+// Canvas handles
+let canvas = null;
+let ctx = null;
+// view transform (pan/zoom)
+let view = { x: 0, y: 0, scale: 1 };
+// currently computed nodes (with id)
+let currentNodes = [];
+// dragging state
+let dragState = { dragging:false, nodeId:null, startX:0, startY:0, origX:0, origY:0 };
+// panning state
+let panState = { panning:false, startX:0, startY:0, origX:0, origY:0 };
+
+function ensureCanvas(){ if(!canvas){ canvas = document.getElementById('mindmapCanvas'); if(canvas) ctx = canvas.getContext('2d'); } }
+
+// Utilities
+function showMessage(text, type='info'){ const box=document.getElementById('messageBox'); const bg = type==='success'? '#d4edda' : type==='error'? '#fff3cd' : '#e3f2fd'; box.innerHTML = `<div style="padding:8px;border-radius:8px;background:${bg}">${text}</div>`; setTimeout(()=>{ if(box.innerHTML.includes(text)) box.innerHTML=''; },3000); }
+function truncate(s,n){ s=String(s||''); return s.length>n? s.slice(0,n-1)+'…': s; }
+function hexToRgba(hex,alpha){ if(!hex) return `rgba(16,185,129,${alpha})`; const h=hex.replace('#',''); const bigint=parseInt(h,16); const r=(bigint>>16)&255; const g=(bigint>>8)&255; const b=bigint&255; return `rgba(${r},${g},${b},${alpha})`; }
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escapeJs(s){ return String(s).replace(/'/g,"\\'").replace(/\"/g,'\\"'); }
+function levelColor(n){ return LEVEL_COLORS[n] || LEVEL_COLORS[1]; }
+function levelLabel(n){ return n===1? 'Débutant' : n===3? 'Avancé' : 'Intermédiaire'; }
+
+// Met à jour la légende avec les couleurs personnalisées
+function updateLegendColors() {
+    document.documentElement.style.setProperty('--level1-color', LEVEL_COLORS[1]);
+    document.documentElement.style.setProperty('--level2-color', LEVEL_COLORS[2]);
+    document.documentElement.style.setProperty('--level3-color', LEVEL_COLORS[3]);
+}
+
+
+// --- Helper drawing functions that must be defined early ---
+function clearCanvasLocal(){ ensureCanvas(); if(!ctx) return; try{ ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#f8f9fa'; ctx.fillRect(0,0,canvas.width,canvas.height); }catch(e){ console.warn('clearCanvasLocal failed',e); } }
+
+function downloadImage(){ ensureCanvas(); if(!canvas){ showMessage('Aucune carte à télécharger','error'); return; } try{ const url = canvas.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download=`carte_competences_${Date.now()}.png`; a.click(); URL.revokeObjectURL(url); showMessage('Image téléchargée','success'); }catch(e){ console.error('downloadImage failed',e); showMessage('Erreur téléchargement','error'); } }
+
+
+// Persistence
+function saveData(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){ console.warn('save failed',e); } }
+function loadData(){ const raw = localStorage.getItem(STORAGE_KEY); if(raw){ try{ data = JSON.parse(raw); }catch(e){ console.warn('parse fail',e); data={center:null,branches:[],skills:{},positions:{}} } } data.branches = data.branches || []; data.skills = data.skills || {}; data.positions = data.positions || {}; updateAllUI(); }
+
+// UI updates
+function updateCenterDisplay(){ const d=document.getElementById('centerDisplay'); if(data.center){ d.innerHTML = `<div class="item-chip"><strong>🎯 ${escapeHtml(data.center)}</strong><button onclick="removeCenter()">✕</button></div>` } else d.innerHTML = '<div style="color:#999;font-style:italic">Aucun centre défini</div>'; }
+function updateBranchList(){ const list=document.getElementById('branchList'); if(data.branches.length===0){ list.innerHTML = '<div style="color:#999;font-style:italic">Aucune branche</div>'; return; } list.innerHTML = data.branches.map((b,idx)=>`<div class="item-chip" style="border-left:6px solid ${b.color};"><span>${escapeHtml(b.name)}</span><div style="display:flex;gap:6px"><button onclick="removeBranch(${idx})">✕</button></div></div>`).join(''); }
+function updateSkillBranchSelect(){ const sel=document.getElementById('skillBranchSelect'); sel.innerHTML=''; data.branches.forEach(b=>{ const opt=document.createElement('option'); opt.value=b.name; opt.textContent=b.name; sel.appendChild(opt); }); if(data.branches.length===0) sel.innerHTML = '<option value="">-- Aucune branche --</option>'; }
+
+// Affichage de la liste des compétences
+function updateSkillList(){
+    const list=document.getElementById('skillList');
+    const all=[];
+    data.branches.forEach(b=>{
+        (data.skills[b.name]||[]).forEach(s=> all.push({ branch:b.name, branchColor:b.color, name:s.name, level:s.level, color:s.color || b.color }));
+    });
+    
+    if(all.length===0){
+        list.innerHTML = '<div style="color:#999;font-style:italic">Aucune compétence</div>';
+        return;
+    }
+
+    list.innerHTML = all.map((it,idx)=>`
+        <div class="item-chip" style="border-left:6px solid ${it.branchColor};">
+            <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:12px;height:12px;border-radius:50%;background:${levelColor(it.level)};display:inline-block" title="Niveau: ${levelLabel(it.level)}"></span>
+                <strong>${escapeHtml(it.name)}</strong>
+                <div style="font-size:0.85em;color:#666;margin-left:8px">${escapeHtml(it.branch)} • ${levelLabel(it.level)}</div>
+            </div>
+            <div>
+                <button onclick="removeSkill('${escapeJs(it.branch)}','${escapeJs(it.name)}')">✕</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+
+// CRUD
+function addCenter(){ 
+    ensureCanvas();
+    const v=document.getElementById('centerInput').value.trim(); 
+    if(!v){ showMessage('Veuillez entrer un titre','error'); return; } 
+    
+    data.center=v; 
+    
+    // Initialise la position du centre si elle n'existe pas
+    if(!data.positions['center']){
+        data.positions['center'] = { x: canvas.width/2, y: canvas.height/2 };
+    }
+    
+    document.getElementById('centerInput').value=''; 
+    saveData(); 
+    updateCenterDisplay(); 
+    showMessage('Centre défini (maintenant déplaçable)','success'); 
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+
+function removeCenter(){ 
+    data.center=null; 
+    delete data.positions['center']; // Supprime aussi la position
+    saveData(); 
+    updateCenterDisplay(); 
+    showMessage('Centre supprimé','success'); 
+}
+
+function addBranch(){ const name=document.getElementById('branchInput').value.trim(); const color=document.getElementById('branchColor').value || '#fbbf24'; if(!name){ showMessage('Veuillez entrer un titre de branche','error'); return; } if(data.branches.length>=12){ showMessage('Maximum recommandé: 12 branches','error'); return; } if(data.branches.find(b=>b.name===name)){ showMessage('Branche déjà existante','error'); return; } const branch={name,color}; data.branches.push(branch); data.skills[name]=data.skills[name]||[]; document.getElementById('branchInput').value=''; saveData(); updateBranchList(); updateSkillBranchSelect(); showMessage('Branche ajoutée','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
+function removeBranch(idx){ const name=data.branches[idx].name; delete data.skills[name]; data.branches.splice(idx,1); saveData(); updateBranchList(); updateSkillList(); updateSkillBranchSelect(); showMessage('Branche supprimée','success'); }
+function addSkill(){ const val=document.getElementById('skillInput').value.trim(); const branch=document.getElementById('skillBranchSelect').value; const level=parseInt(document.getElementById('skillLevelSelect').value,10)||2; const color=document.getElementById('skillColor')?document.getElementById('skillColor').value:'#10b981'; if(!val){ showMessage('Veuillez entrer une compétence','error'); return; } if(!branch){ showMessage('Sélectionnez une branche','error'); return; } const arr=data.skills[branch]=data.skills[branch]||[]; if(arr.find(s=>s.name===val)){ showMessage('Compétence déjà existante dans cette branche','error'); return; } arr.push({name:val,level,color}); document.getElementById('skillInput').value=''; saveData(); updateSkillList(); showMessage('Compétence ajoutée','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
+function removeSkill(branch,skill){ data.skills[branch]=(data.skills[branch]||[]).filter(s=>s.name!==skill); saveData(); updateSkillList(); showMessage('Compétence supprimée','success'); }
+
+// Export / Import
+function exportJSON(){ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='carte_competences.json'; a.click(); URL.revokeObjectURL(url); showMessage('Export JSON généré','success'); }
+function importJSON(ev){ const f=ev.target.files&&ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); if(!obj) throw 'Invalid'; data=obj; saveData(); updateAllUI(); showMessage('Import réussi','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }catch(e){ showMessage('Fichier invalide','error'); } }; r.readAsText(f); ev.target.value=''; }
+
+// Centrage des noeuds (Supprime les positions enregistrées)
+function centerNodes(){
+    if(!data.center){
+        showMessage("Le centre n'est pas défini. Ajoutez-en un d'abord.", 'error');
+        return;
+    }
+    
+    if(confirm('Ceci va supprimer toutes les positions enregistrées des branches et des compétences pour recentrer la carte. Continuer ?')){
+        data.positions = {};
+        // Initialise la position du centre au milieu du canevas
+        data.positions['center'] = { x: canvas.width/2, y: canvas.height/2 };
+        saveData();
+        view._resetScale = true; // Force le recalcul du zoom
+        generateMindmap();
+        showMessage('Carte recentrée et positions réinitialisées.','success');
+    }
+}
+
+// Garden/example/reset
+function loadGardenMode(){ data={ center:'Mes Compétences', branches:[ {name:'Hard skills',color:'#3b82f6'},{name:'Soft skills',color:'#f59e0b'} ], skills:{ 'Hard skills':[], 'Soft skills':[] }, positions: data.positions||{} }; saveData(); updateAllUI(); showMessage('Mode Jardin chargé — triez vos compétences en Hard / Soft','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
+function loadExample(){ data={ center:'Mes Compétences', branches:[ {name:'Techniques',color:'#3b82f6'},{name:'Relationnelles',color:'#f59e0b'},{name:'Gestion',color:'#10b981'} ], skills:{ 'Techniques':[ {name:'Excel',level:3,color:'#3b82f6'},{name:'JS',level:2,color:'#60a5fa'}], 'Relationnelles':[ {name:'Communication',level:3,color:'#f59e0b'}], 'Gestion':[ {name:'Planification',level:2,color:'#10b981'}] }, positions: {} }; saveData(); updateAllUI(); showMessage('Exemple chargé','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
+function resetAll(){ if(!confirm('Réinitialiser toutes les données ?')) return; data={center:null,branches:[],skills:{},positions:{}}; saveData(); updateAllUI(); showMessage('Réinitialisé','success'); }
+
+function updateAllUI(){ updateCenterDisplay(); updateBranchList(); updateSkillList(); updateSkillBranchSelect(); updateLegendColors(); }
+
+// Node id helper
+function nodeIdFor(n){ if(n.type==='center') return 'center'; if(n.type==='branch') return `branch:${n.text}`; if(n.type==='skill') return `skill:${n.parentName}:${n.text}`; return n.type+':'+n.text; }
+
+// Dynamic radius based on text width
+function computeRadius(text, type, ctx){
+    if(!ctx) return type==='center' ? 48 : type==='branch' ? 28 : 14;
+    let fontSize, padding, rMin;
+    if(type==='center'){ fontSize = 16; padding = 16; rMin = 48; }
+    else if(type==='branch'){ fontSize = 12; padding = 12; rMin = 28; }
+    else if(type==='skill'){ fontSize = 11; padding = 10; rMin = 14; }
+    else return 14;
+
+    ctx.font = `bold ${fontSize}px Arial`;
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const requiredRadius = Math.max(textWidth / 2 + padding, rMin);
+    return requiredRadius;
+}
+
+// Main drawing: computes layout but respects saved positions in data.positions
+function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossible d\'obtenir le contexte du canvas','error'); return; } 
+ // basic checks
+ if(!data.center){ showMessage('Définissez d\'abord le centre','error'); return; } if(data.branches.length===0){ showMessage('Ajoutez au moins une branche','error'); return; }
+ 
+ // resize canvas to container size
+ const container = document.getElementById('canvas-container'); const rect = container.getBoundingClientRect(); // set canvas pixel size
+ const dpr = window.devicePixelRatio || 1; canvas.width = Math.max(800, Math.min(2000, Math.floor(rect.width * dpr)));
+ canvas.height = Math.max(500, Math.floor((rect.height||700) * dpr));
+ 
+ // clear current nodes
+ currentNodes = [];
+ 
+ // core layout in world coordinates
+ const cx_default = canvas.width/2; 
+ const cy_default = canvas.height/2;
+
+ // 1. Initial/Default layout calculation (used for reference and initial positioning)
+ const nodes = [];
+ const centerText = truncate(data.center, 24);
+ const centerR = computeRadius(centerText, 'center', ctx);
+ 
+ // NOUVEAU: Récupère la position enregistrée ou utilise la position par défaut du canevas
+ const centerPos = data.positions['center'] || { x: cx_default, y: cy_default }; 
+ const centerNode = {type:'center', x:centerPos.x, y:centerPos.y, r:centerR, text:centerText, color:'#667eea'};
+ 
+ // Si c'est la première fois, enregistre la position par défaut
+ if(!data.positions['center']){
+     data.positions['center'] = { x: centerNode.x, y: centerNode.y };
+     saveData();
+ }
+ 
+ nodes.push(centerNode);
+
+ const branchNodes = []; // Store branches to link skills
+ const branchCount = data.branches.length; 
+ const angleStep = (Math.PI*2)/branchCount;
+ const distance = 220 + branchCount * 10; // spread branches a bit more
+
+ data.branches.forEach((b,i)=>{
+     const angle = angleStep * i - Math.PI/2;
+     
+     // Position initiale par rapport au centre du canevas (pour le calcul de la position par défaut)
+     const bx0 = cx_default + Math.cos(angle)*distance; 
+     const by0 = cy_default + Math.sin(angle)*distance;
+     
+     const branchText = truncate(b.name, 12);
+     const branchR = computeRadius(branchText, 'branch', ctx);
+     
+     // Récupère la position enregistrée ou utilise la position par défaut (bx0, by0)
+     const bid = `branch:${b.name}`;
+     const branchPos = data.positions[bid] || { x: bx0, y: by0 };
+     
+     const branchNode = {type:'branch', x:branchPos.x, y:branchPos.y, r:branchR, text:branchText, color:b.color};
+     
+     branchNodes.push(branchNode);
+     nodes.push(branchNode);
+     
+     const skills = (data.skills[b.name]||[]);
+     const spread = Math.min(Math.PI/2, Math.PI/3 + skills.length*0.05);
+     const start = angle - spread/2; const step = skills.length>0? spread/(skills.length+1):0;
+     
+     skills.forEach((s,idx)=>{
+         const a = start + step*(idx+1);
+         
+         // Position initiale/par défaut relative à la position par défaut de la branche (bx0, by0)
+         const sx0 = branchPos.x + Math.cos(a)*140; 
+         const sy0 = branchPos.y + Math.sin(a)*140;
+         
+         const skillText = truncate(s.name, 12);
+         const radius = computeRadius(skillText, 'skill', ctx);
+         
+         const skid = `skill:${b.name}:${s.name}`;
+         const skillPos = data.positions[skid] || { x: sx0, y: sy0 };
+         
+         const skillNode = {type:'skill', x:skillPos.x, y:skillPos.y, r:radius, text:skillText, color:s.color||b.color, parentName:b.name, level:s.level };
+         
+         nodes.push(skillNode);
+     });
+ });
+
+ // 2. Final node list with updated branch positions (to correctly calculate skill links)
+ currentNodes = nodes.map(n=>{ 
+     const id = nodeIdFor(n);
+     if(n.type === 'skill'){
+         const parentBranch = branchNodes.find(b=>b.text===truncate(n.parentName,12));
+         // Fixe la compétence à la position actuelle (sauvegardée ou par défaut) de la branche parente
+         n.parent = { x: parentBranch.x, y: parentBranch.y };
+     } else if (n.type === 'branch'){
+         // Fixe la branche à la position actuelle du centre
+         n.parent = { x: centerNode.x, y: centerNode.y };
+     }
+     return {...n, id}; 
+ });
+
+ // 3. Compute bounding box and view transformation
+ let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity; 
+ currentNodes.forEach(n=>{ minX=Math.min(minX,n.x-n.r-10); minY=Math.min(minY,n.y-n.r-10); maxX=Math.max(maxX,n.x+n.r+10); maxY=Math.max(maxY,n.y+n.r+10); });
+ 
+ const contentW = maxX-minX, contentH = maxY-minY; const padding = 40; const availableW = canvas.width - padding*2, availableH = canvas.height - padding*2; 
+ const baseScale = Math.min(1, availableW / contentW, availableH / contentH);
+ 
+ // initialize view.scale on first draw
+ if(!view.scale || view._resetScale) { view.scale = baseScale; view._resetScale = false; }
+ 
+ // center content in view coordinates if not initialized
+ const offsetX = (canvas.width - contentW*view.scale)/2 - minX*view.scale;
+ const offsetY = (canvas.height - contentH*view.scale)/2 - minY*view.scale;
+ if(!view._initialized){ view.x = offsetX; view.y = offsetY; view._initialized = true; }
+
+ // 4. Draw using view transform
+ clearCanvasLocal(); ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale);
+
+ // draw center
+ currentNodes.filter(n=>n.type==='center').forEach(n=>{ 
+    // Le centre est le point de départ de toutes les lignes des branches
+ });
+ 
+ // draw branches
+ currentNodes.filter(n=>n.type==='branch').forEach(bn=>{ 
+     ctx.strokeStyle = bn.color || '#fbbf24'; ctx.lineWidth=4; 
+     ctx.beginPath(); ctx.moveTo(centerNode.x,centerNode.y); ctx.lineTo(bn.x,bn.y); ctx.stroke(); // Ligne Centre -> Branche
+     ctx.fillStyle = bn.color || '#fbbf24'; ctx.beginPath(); ctx.arc(bn.x,bn.y,bn.r,0,Math.PI*2); ctx.fill(); 
+     ctx.fillStyle='#fff'; ctx.font='bold 12px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(bn.text, bn.x, bn.y); 
+ });
+ 
+ // draw skills
+ currentNodes.filter(n=>n.type==='skill').forEach(sn=>{ 
+     ctx.strokeStyle = hexToRgba(sn.color||'#10b981',0.35); ctx.lineWidth=2; 
+     ctx.beginPath(); ctx.moveTo(sn.parent.x, sn.parent.y); ctx.lineTo(sn.x, sn.y); ctx.stroke(); // Ligne Branche -> Compétence
+     ctx.fillStyle = sn.color||'#10b981'; ctx.beginPath(); ctx.arc(sn.x,sn.y,sn.r,0,Math.PI*2); ctx.fill(); 
+     
+     // Pastille de niveau sur la carte
+     ctx.fillStyle = levelColor(sn.level);
+     ctx.beginPath();
+     ctx.arc(sn.x + sn.r - 5, sn.y - sn.r + 5, 4, 0, Math.PI*2); // Petit cercle en haut à droite
+     ctx.fill();
+     
+     ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; 
+     ctx.fillText(sn.text, sn.x, sn.y); 
+ });
+ 
+ // Redessine le centre en dernier pour qu'il soit au-dessus de tout
+ currentNodes.filter(n=>n.type==='center').forEach(n=>{ 
+     ctx.beginPath(); 
+     ctx.fillStyle=n.color; 
+     ctx.arc(n.x,n.y,n.r,0,Math.PI*2); 
+     ctx.fill(); 
+     ctx.fillStyle='#fff'; 
+     ctx.font='bold 16px Arial'; 
+     ctx.textAlign='center'; 
+     ctx.textBaseline='middle'; 
+     ctx.fillText(n.text, n.x, n.y); 
+ });
+ 
+ ctx.restore(); showMessage('Carte générée et liens resynchronisés.','success'); 
+}catch(err){ console.error('generateMindmap error',err); showMessage('Erreur lors du dessin — regarde la console (F12)','error'); } }
+
+// Save position helper
+function persistNodePosition(id, x, y){ 
+    data.positions = data.positions || {}; 
+    data.positions[id] = { x, y }; 
+    saveData(); 
+}
+
+// Hit testing and dragging
+function findNodeAtScreen(px,py){ const world = screenToWorld(px,py); for(let i=currentNodes.length-1;i>=0;i--){ const n=currentNodes[i]; const dx = world.x - n.x; const dy = world.y - n.y; if(Math.sqrt(dx*dx+dy*dy) <= n.r + 6) return n; } return null; }
+
+// Pointer event handlers (Mise à jour pour gérer le centre)
+function onPointerDown(e){ ensureCanvas(); if(!canvas) return; const isLeft = e.button===0; const isRight = e.button===2; const shouldPan = isRight || (isLeft && e.ctrlKey); if(shouldPan){ panState.panning = true; panState.startX = e.clientX; panState.startY = e.clientY; panState.origX = view.x; panState.origY = view.y; try{ canvas.setPointerCapture(e.pointerId);}catch(_){} return; } const hit = findNodeAtScreen(e.clientX, e.clientY); if(hit){ dragState.dragging = true; dragState.nodeId = hit.id; dragState.startX = e.clientX; dragState.startY = e.clientY; dragState.origX = hit.x; dragState.origY = hit.y; try{ canvas.setPointerCapture(e.pointerId);}catch(_){} } }
+function onPointerMove(e){ ensureCanvas(); if(!canvas) return; if(panState.panning){ const dx = e.clientX - panState.startX; const dy = e.clientY - panState.startY; view.x = panState.origX + dx; view.y = panState.origY + dy; generateMindmap(); return; } if(dragState.dragging && dragState.nodeId){ const n = currentNodes.find(n=>n.id===dragState.nodeId); if(!n) return; 
+    const world = screenToWorld(e.clientX,e.clientY);
+    
+    // Déplace le nœud
+    n.x = world.x; 
+    n.y = world.y; 
+
+    // Mettre à jour la position du centre pour les nœuds branches
+    const centerNode = currentNodes.find(c => c.type === 'center');
+    
+    // Si on bouge le centre, on met à jour toutes les branches parentes (pour l'affichage immédiat)
+    if (n.type === 'center') {
+        currentNodes.filter(b => b.type === 'branch').forEach(b => {
+            b.parent = { x: n.x, y: n.y };
+        });
+    }
+
+    // Si on bouge une branche, on met à jour toutes les compétences parentes (pour l'affichage immédiat)
+    if (n.type === 'branch') {
+        currentNodes.filter(s => s.type === 'skill' && s.parentName === n.text).forEach(s => {
+            s.parent = { x: n.x, y: n.y };
+        });
+    }
+
+    // Redraw optimisé pour le drag
+    clearCanvasLocal(); ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale); 
+    
+    // Dessin du centre
+    currentNodes.filter(c => c.type === 'center').forEach(c => { 
+        ctx.beginPath(); ctx.fillStyle=c.color; ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill(); 
+        ctx.fillStyle='#fff'; ctx.font='bold 16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(c.text, c.x, c.y); 
+    }); 
+    
+    // Dessin des branches et liens
+    currentNodes.filter(b => b.type === 'branch').forEach(bn => { 
+        ctx.strokeStyle = bn.color || '#fbbf24'; ctx.lineWidth=4; 
+        ctx.beginPath(); ctx.moveTo(centerNode.x,centerNode.y); ctx.lineTo(bn.x,bn.y); ctx.stroke(); 
+        ctx.fillStyle = bn.color || '#fbbf24'; ctx.beginPath(); ctx.arc(bn.x,bn.y,bn.r,0,Math.PI*2); ctx.fill(); 
+        ctx.fillStyle='#fff'; ctx.font='bold 12px Arial'; ctx.fillText(bn.text, bn.x, bn.y); 
+    }); 
+    
+    // Dessin des compétences et liens
+    currentNodes.filter(s => s.type === 'skill').forEach(sn => { 
+        const parentBranch = currentNodes.find(b => b.type === 'branch' && b.text === truncate(sn.parentName, 12));
+        const parentX = parentBranch ? parentBranch.x : sn.parent.x;
+        const parentY = parentBranch ? parentBranch.y : sn.parent.y;
+        
+        ctx.strokeStyle = hexToRgba(sn.color||'#10b981',0.35); ctx.lineWidth=2; 
+        ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(sn.x, sn.y); ctx.stroke(); 
+        ctx.fillStyle = sn.color||'#10b981'; ctx.beginPath(); ctx.arc(sn.x,sn.y,sn.r,0,Math.PI*2); ctx.fill(); 
+        
+        // Pastille de niveau
+        ctx.fillStyle = levelColor(sn.level);
+        ctx.beginPath();
+        ctx.arc(sn.x + sn.r - 5, sn.y - sn.r + 5, 4, 0, Math.PI*2); 
+        ctx.fill();
+        
+        ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(sn.text, sn.x, sn.y); 
+    }); 
+    
+    ctx.restore(); 
+} }
+
+function onPointerUp(e){ ensureCanvas(); if(!canvas) return; 
+    
+    if(panState.panning){ 
+        panState.panning=false; 
+        try{ canvas.releasePointerCapture(e.pointerId);}catch(_){}; 
+        generateMindmap(); 
+        return; 
+    } 
+    
+    if(dragState.dragging && dragState.nodeId){ 
+        const n = currentNodes.find(n=>n.id===dragState.nodeId); 
+        if(n){ 
+            // Enregistre la nouvelle position du nœud (centre, branche ou compétence)
+            persistNodePosition(n.id, n.x, n.y); 
+        } 
+        dragState.dragging=false; 
+        dragState.nodeId=null; 
+        try{ canvas.releasePointerCapture(e.pointerId);}catch(_){} 
+        
+        // Redraw complet pour s'assurer que tout est synchronisé
+        generateMindmap();
+    } 
+}
+
+// Wheel for zoom
+function onWheel(e){ ensureCanvas(); if(!canvas) return; e.preventDefault(); const rect = canvas.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; const ratioX = canvas.width / rect.width; const ratioY = canvas.height / rect.height; const cx = sx * ratioX; const cy = sy * ratioY; const delta = e.deltaY > 0 ? 0.9 : 1.1; const newScale = Math.max(0.3, Math.min(3, view.scale * delta)); view.x = cx - (cx - view.x) * (newScale / view.scale); view.y = cy - (cy - view.y) * (newScale / view.scale); view.scale = newScale; generateMindmap(); }
+
+// convert screen px to world coords
+function screenToWorld(px,py){ ensureCanvas(); const rect = canvas.getBoundingClientRect(); const sx = (px - rect.left); const sy = (py - rect.top); const ratioX = canvas.width / rect.width; const ratioY = canvas.height / rect.height; const cx = sx * ratioX; const cy = sy * ratioY; const wx = (cx - view.x) / view.scale; const wy = (cy - view.y) / view.scale; return {x:wx, y:wy}; }
+
+// init bindings
+window.addEventListener('load', ()=>{
+    document.getElementById('addCenterBtn').addEventListener('click', addCenter);
+    document.getElementById('addBranchBtn').addEventListener('click', addBranch);
+    document.getElementById('addSkillBtn').addEventListener('click', addSkill);
+    // Le bouton drawBtn est maintenant un dropdown, mais l'action par défaut reste generateMindmap
+    document.getElementById('drawBtn').addEventListener('click', generateMindmap); 
+    document.getElementById('downloadPng').addEventListener('click', downloadImage);
+    document.getElementById('exportJson').addEventListener('click', exportJSON);
+    document.getElementById('importFile').addEventListener('change', importJSON);
+    document.getElementById('resetAll').addEventListener('click', resetAll);
+    document.getElementById('clearStorage').addEventListener('click', ()=>{ if(confirm('Supprimer la sauvegarde locale ?')){ localStorage.removeItem(STORAGE_KEY); showMessage('Sauvegarde supprimée','success'); } });
+    document.getElementById('loadExample').addEventListener('click', loadExample);
+    document.getElementById('gardenMode').addEventListener('click', loadGardenMode);
+
+    ensureCanvas(); // pointer events on canvas
+    if(canvas){ 
+        canvas.addEventListener('pointerdown', onPointerDown); 
+        window.addEventListener('pointermove', onPointerMove); 
+        window.addEventListener('pointerup', onPointerUp); 
+        canvas.addEventListener('wheel', onWheel, { passive:false }); 
+        canvas.addEventListener('contextmenu', (e)=>e.preventDefault()); 
+        
+        // S'assurer que le centre a une position de départ au chargement
+        const centerPos = data.positions['center'];
+        if (!centerPos) {
+            data.positions['center'] = { x: canvas.width/2, y: canvas.height/2 };
+            saveData();
+        }
+    }
+
+    loadData(); if(data.center) setTimeout(()=>{ try{ generateMindmap(); }catch(e){ console.error(e); } },200);
+});
+
+// auto save
+window.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') saveData(); });
+setInterval(saveData,2000);
+
+</script>
+</body>
+</html>
