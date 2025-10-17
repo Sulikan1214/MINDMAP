@@ -5,29 +5,44 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Créer sa Carte Mentale — Standalone (avec zoom/pan & drag)</title>
     <style>
+        /* Base */
         * { box-sizing: border-box; margin:0; padding:0; }
-        body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#222; min-height:100vh; padding:20px; }
+        body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#222; min-height:100vh; padding:10px; }
         .container { max-width:1200px; margin:0 auto; }
+        
+        /* Header */
         .header{ color:white; text-align:center; margin-bottom:18px }
+        .header p{ font-size:0.9em; opacity:0.8; }
+
+        /* Layout */
         .layout{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
         .panel{ background:white; padding:16px; border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,0.12); }
-        .input-group{ display:flex; gap:8px; margin-bottom:10px; }
-        input[type=text], select { padding:8px; border-radius:8px; border:1px solid #eee; flex:1 }
-        input[type=color]{ width:52px; height:40px; padding:4px; border-radius:8px; border:1px solid #ddd }
-        button { padding:8px 12px; border-radius:8px; border:none; background:#667eea; color:#fff; cursor:pointer; }
+        
+        /* Inputs & Buttons */
+        .input-group{ display:flex; gap:8px; margin-bottom:10px; flex-wrap: nowrap; }
+        input[type=text], select { padding:8px; border-radius:8px; border:1px solid #eee; flex:1; min-width:80px; font-size:14px; }
+        input[type=color]{ width:40px; height:40px; padding:4px; border-radius:8px; border:1px solid #ddd; flex:0 0 40px; }
+        button { padding:8px 12px; border-radius:8px; border:none; background:#667eea; color:#fff; cursor:pointer; font-size:14px; white-space: nowrap; }
         .btn-secondary{ background:#f0f0f0; color:#333; }
         .btn-danger{ background:#ef4444; color:#fff; }
+
+        /* Lists */
         .item-list{ max-height:260px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
         .item-chip{ padding:8px; border-radius:8px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center; }
+        .item-chip > div:first-child { flex: 1; overflow: hidden; }
+
+        /* Canvas */
         #canvas-container{ background:#f8f9fa; border:2px dashed #667eea; border-radius:10px; min-height:520px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative }
         canvas{ display:block; width:100%; height:100%; touch-action: none; }
-        .legend{ display:flex; gap:12px; margin-top:12px; }
+        
+        /* Misc */
+        .legend{ display:flex; gap:12px; margin-top:12px; flex-wrap: wrap; }
         .legend-item{ display:flex; align-items:center; gap:4px }
         .legend-dot{ width:12px; height:12px; border-radius:50%; }
         .message{ margin-top:10px; }
-        .hint{ font-size:0.9em; color:#555; margin-top:8px }
+        .hint{ font-size:0.8em; color:#555; margin-top:8px }
 
-        /* Style pour le menu déroulant du bouton de dessin */
+        /* Dropdown */
         .dropdown { position: relative; display: inline-block; }
         .dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; border-radius: 8px; overflow: hidden; right: 0; }
         .dropdown-content button { color: black; padding: 10px 12px; text-decoration: none; display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid #eee; border-radius: 0; }
@@ -35,14 +50,30 @@
         .dropdown:hover .dropdown-content { display: block; }
         .dropdown-content button:last-child { border-bottom: none; }
 
-        @media (max-width: 1024px){ .layout{ grid-template-columns:1fr; } #canvas-container{ min-height:420px } }
+        /* Responsive adjustments */
+        @media (max-width: 1024px){ 
+            .layout{ grid-template-columns:1fr; } 
+            #canvas-container{ min-height:420px; height: 70vh; }
+        }
+        
+        @media (max-width: 600px){ 
+            body { padding: 8px; }
+            .header h1 { font-size: 1.5em; }
+            .header p { font-size: 0.8em; }
+            .panel { padding: 12px; }
+            .input-group{ flex-wrap: wrap; }
+            .input-group input[type=text], .input-group select { flex: 1 1 45%; min-width: 45%; }
+            .input-group button, .input-group input[type=color] { flex: 0 0 auto; }
+            .item-chip div:nth-child(2) button { padding: 6px 10px; font-size: 12px; }
+            .legend-item { font-size: 0.9em; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🧠 Atelier Carte Mentale — Standalone</h1>
-            <p style="opacity:0.9;color:#fff">Sauvegarde automatique • Couleurs par branche et par compétence • Export / Import • Drag & Drop</p>
+            <h1>🧠 Atelier Carte Mentale</h1>
+            <p>Sauvegarde automatique • Export / Import • Drag & Drop • **Centre $\to$ Branche $\to$ Compétence $\to$ Sous-compétence**</p>
         </div>
 
         <div class="layout">
@@ -74,8 +105,8 @@
 
                 <div>
                     <strong>Compétences</strong>
-                    <div class="input-group">
-                        <input type="text" id="skillInput" placeholder="Ex: Excel, Communication..." maxlength="40" />
+                    <div class="input-group" style="flex-wrap: wrap;">
+                        <input type="text" id="skillInput" placeholder="Ex: Excel, Communication..." maxlength="40" style="flex: 1 1 100%;" />
                         <input type="color" id="skillColor" value="#10b981" title="Couleur de la compétence" />
                         <select id="skillBranchSelect"></select>
                         <select id="skillLevelSelect" title="Niveau">
@@ -88,6 +119,23 @@
                     <div id="skillList" class="item-list"><div style="color:#999;font-style:italic">Aucune compétence</div></div>
                 </div>
 
+                <hr style="margin:12px 0">
+
+                <div>
+                    <strong>Sous-compétences</strong>
+                    <div class="input-group" style="flex-wrap: wrap;">
+                        <input type="text" id="subskillInput" placeholder="Ex: Macro, Pivot..." maxlength="30" style="flex: 1 1 100%;" />
+                        <select id="subskillBranchSelect"></select>
+                        <select id="subskillSkillSelect"></select>
+                        <select id="subskillLevelSelect" title="Niveau">
+                            <option value="1">Débutant</option>
+                            <option value="2" selected>Intermédiaire</option>
+                            <option value="3">Avancé</option>
+                        </select>
+                        <button id="addSubskillBtn">+ Sous-compétence</button>
+                    </div>
+                    <div id="subskillList" class="item-list"><div style="color:#999;font-style:italic">Aucune sous-compétence</div></div>
+                </div>
                 <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
                     <button id="loadExample" class="btn-secondary">Charger un exemple</button>
                     <button id="gardenMode" class="btn-secondary">Mode Jardin (Hard/Soft)</button>
@@ -103,7 +151,7 @@
                 </div>
 
                 <div id="messageBox" class="message"></div>
-                <div class="hint">Astuce: clic-droit ou Ctrl+drag pour pan; roulette pour zoom; drag gauche pour déplacer un nœud (y compris le Centre). Cliquez sur **Redessiner** après avoir déplacé les nœuds pour resynchroniser les liens.</div>
+                <div class="hint">Astuce: clic-droit ou Ctrl+drag pour pan; roulette pour zoom; drag gauche pour déplacer un nœud (y compris le Centre). Cliquez sur **Redessiner** après avoir déplacé les nœuds.</div>
             </div>
 
             <div class="panel">
@@ -125,17 +173,12 @@
                     <div class="legend-item"><div class="legend-dot" style="background:#667eea"></div><span>Centre</span></div>
                     <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div><span>Branches</span></div>
                     <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div><span>Compétences</span></div>
-                    <div class="legend-item" style="margin-left:12px"><span>Niveaux (Couleurs ci-dessous):</span></div>
+                    <div class="legend-item" style="margin-left:12px"><span>Niveaux:</span></div>
                     <div class="legend-item"><div class="legend-dot" style="background:var(--level1-color, #9CA3AF)"></div><span>Débutant</span></div>
                     <div class="legend-item"><div class="legend-dot" style="background:var(--level2-color, #F59E0B)"></div><span>Intermédiaire</span></div>
                     <div class="legend-item"><div class="legend-dot" style="background:var(--level3-color, #10B981)"></div><span>Avancé</span></div>
                 </div>
             </div>
-        </div>
-
-        <div style="margin-top:18px" class="panel">
-            <h2>Notes</h2>
-            <p>Page autonome — pas besoin de React. Les données sont stockées localement (localStorage) et peuvent être exportées/importées au format JSON. Drag & drop et zoom/pan ajoutés. La taille des bulles des branches et compétences s'adapte désormais au texte. **Le nœud central est désormais déplaçable.**</p>
         </div>
     </div>
 
@@ -201,14 +244,49 @@ function loadData(){ const raw = localStorage.getItem(STORAGE_KEY); if(raw){ try
 // UI updates
 function updateCenterDisplay(){ const d=document.getElementById('centerDisplay'); if(data.center){ d.innerHTML = `<div class="item-chip"><strong>🎯 ${escapeHtml(data.center)}</strong><button onclick="removeCenter()">✕</button></div>` } else d.innerHTML = '<div style="color:#999;font-style:italic">Aucun centre défini</div>'; }
 function updateBranchList(){ const list=document.getElementById('branchList'); if(data.branches.length===0){ list.innerHTML = '<div style="color:#999;font-style:italic">Aucune branche</div>'; return; } list.innerHTML = data.branches.map((b,idx)=>`<div class="item-chip" style="border-left:6px solid ${b.color};"><span>${escapeHtml(b.name)}</span><div style="display:flex;gap:6px"><button onclick="removeBranch(${idx})">✕</button></div></div>`).join(''); }
-function updateSkillBranchSelect(){ const sel=document.getElementById('skillBranchSelect'); sel.innerHTML=''; data.branches.forEach(b=>{ const opt=document.createElement('option'); opt.value=b.name; opt.textContent=b.name; sel.appendChild(opt); }); if(data.branches.length===0) sel.innerHTML = '<option value="">-- Aucune branche --</option>'; }
+
+function updateSkillBranchSelect(){ 
+    const selSkillBranch=document.getElementById('skillBranchSelect'); 
+    const selSubskillBranch=document.getElementById('subskillBranchSelect');
+    [selSkillBranch, selSubskillBranch].forEach(sel => {
+        sel.innerHTML=''; 
+        data.branches.forEach(b=>{ 
+            const opt=document.createElement('option'); 
+            opt.value=b.name; opt.textContent=b.name; 
+            sel.appendChild(opt); 
+        }); 
+        if(data.branches.length===0) sel.innerHTML = '<option value="">-- Aucune branche --</option>';
+    });
+    // Update skill selector for subskills initially
+    updateSubskillSkillSelect();
+}
+
+// NOUVELLE FONCTION : Met à jour le sélecteur de compétences pour les sous-compétences
+function updateSubskillSkillSelect(){
+    const branchName = document.getElementById('subskillBranchSelect').value;
+    const sel = document.getElementById('subskillSkillSelect');
+    sel.innerHTML='';
+    const skills = data.skills[branchName] || [];
+
+    if(skills.length===0){
+        sel.innerHTML = '<option value="">-- Aucune compétence --</option>';
+        return;
+    }
+
+    skills.forEach(s => {
+        const opt=document.createElement('option');
+        opt.value=s.name; 
+        opt.textContent=s.name; 
+        sel.appendChild(opt);
+    });
+}
 
 // Affichage de la liste des compétences
 function updateSkillList(){
     const list=document.getElementById('skillList');
     const all=[];
     data.branches.forEach(b=>{
-        (data.skills[b.name]||[]).forEach(s=> all.push({ branch:b.name, branchColor:b.color, name:s.name, level:s.level, color:s.color || b.color }));
+        (data.skills[b.name]||[]).forEach(s=> all.push({ branch:b.name, branchColor:b.color, name:s.name, level:s.level, color:s.color || b.color, subskillsCount: (s.subskills||[]).length }));
     });
     
     if(all.length===0){
@@ -221,10 +299,47 @@ function updateSkillList(){
             <div style="display:flex;align-items:center;gap:8px">
                 <span style="width:12px;height:12px;border-radius:50%;background:${levelColor(it.level)};display:inline-block" title="Niveau: ${levelLabel(it.level)}"></span>
                 <strong>${escapeHtml(it.name)}</strong>
-                <div style="font-size:0.85em;color:#666;margin-left:8px">${escapeHtml(it.branch)} • ${levelLabel(it.level)}</div>
+                <div style="font-size:0.85em;color:#666;margin-left:8px">${escapeHtml(it.branch)} • ${levelLabel(it.level)} (${it.subskillsCount} s-comp.)</div>
             </div>
             <div>
                 <button onclick="removeSkill('${escapeJs(it.branch)}','${escapeJs(it.name)}')">✕</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// NOUVELLE FONCTION : Affichage de la liste des sous-compétences
+function updateSubskillList(){
+    const list=document.getElementById('subskillList');
+    const all=[];
+    data.branches.forEach(b=>{
+        (data.skills[b.name]||[]).forEach(s => {
+            (s.subskills||[]).forEach(ss => {
+                all.push({ 
+                    branch:b.name, 
+                    skill: s.name, 
+                    skillColor: s.color || b.color, 
+                    name:ss.name, 
+                    level:ss.level 
+                });
+            });
+        });
+    });
+
+    if(all.length===0){
+        list.innerHTML = '<div style="color:#999;font-style:italic">Aucune sous-compétence</div>';
+        return;
+    }
+
+    list.innerHTML = all.map((it,idx)=>`
+        <div class="item-chip" style="border-left:6px solid ${it.skillColor};">
+            <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:12px;height:12px;border-radius:50%;background:${levelColor(it.level)};display:inline-block" title="Niveau: ${levelLabel(it.level)}"></span>
+                <strong>${escapeHtml(it.name)}</strong>
+                <div style="font-size:0.85em;color:#666;margin-left:8px">${escapeHtml(it.branch)} / ${escapeHtml(it.skill)} • ${levelLabel(it.level)}</div>
+            </div>
+            <div>
+                <button onclick="removeSubskill('${escapeJs(it.branch)}','${escapeJs(it.skill)}','${escapeJs(it.name)}')">✕</button>
             </div>
         </div>
     `).join('');
@@ -260,13 +375,128 @@ function removeCenter(){
 }
 
 function addBranch(){ const name=document.getElementById('branchInput').value.trim(); const color=document.getElementById('branchColor').value || '#fbbf24'; if(!name){ showMessage('Veuillez entrer un titre de branche','error'); return; } if(data.branches.length>=12){ showMessage('Maximum recommandé: 12 branches','error'); return; } if(data.branches.find(b=>b.name===name)){ showMessage('Branche déjà existante','error'); return; } const branch={name,color}; data.branches.push(branch); data.skills[name]=data.skills[name]||[]; document.getElementById('branchInput').value=''; saveData(); updateBranchList(); updateSkillBranchSelect(); showMessage('Branche ajoutée','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
-function removeBranch(idx){ const name=data.branches[idx].name; delete data.skills[name]; data.branches.splice(idx,1); saveData(); updateBranchList(); updateSkillList(); updateSkillBranchSelect(); showMessage('Branche supprimée','success'); }
-function addSkill(){ const val=document.getElementById('skillInput').value.trim(); const branch=document.getElementById('skillBranchSelect').value; const level=parseInt(document.getElementById('skillLevelSelect').value,10)||2; const color=document.getElementById('skillColor')?document.getElementById('skillColor').value:'#10b981'; if(!val){ showMessage('Veuillez entrer une compétence','error'); return; } if(!branch){ showMessage('Sélectionnez une branche','error'); return; } const arr=data.skills[branch]=data.skills[branch]||[]; if(arr.find(s=>s.name===val)){ showMessage('Compétence déjà existante dans cette branche','error'); return; } arr.push({name:val,level,color}); document.getElementById('skillInput').value=''; saveData(); updateSkillList(); showMessage('Compétence ajoutée','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
-function removeSkill(branch,skill){ data.skills[branch]=(data.skills[branch]||[]).filter(s=>s.name!==skill); saveData(); updateSkillList(); showMessage('Compétence supprimée','success'); }
+function removeBranch(idx){ 
+    const name=data.branches[idx].name; 
+    delete data.skills[name]; 
+    data.branches.splice(idx,1); 
+    // Suppression des positions des noeuds enfants (branches, skills, subskills)
+    Object.keys(data.positions).filter(id => id.startsWith(`branch:${name}`) || id.startsWith(`skill:${name}`)).forEach(id => delete data.positions[id]);
+    saveData(); 
+    updateBranchList(); 
+    updateSkillList(); 
+    updateSubskillList();
+    updateSkillBranchSelect(); 
+    showMessage('Branche supprimée','success'); 
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+
+function addSkill(){ 
+    const val=document.getElementById('skillInput').value.trim(); 
+    const branch=document.getElementById('skillBranchSelect').value; 
+    const level=parseInt(document.getElementById('skillLevelSelect').value,10)||2; 
+    const color=document.getElementById('skillColor')?document.getElementById('skillColor').value:'#10b981'; 
+    if(!val){ showMessage('Veuillez entrer une compétence','error'); return; } 
+    if(!branch){ showMessage('Sélectionnez une branche','error'); return; } 
+    
+    const arr=data.skills[branch]=data.skills[branch]||[]; 
+    if(arr.find(s=>s.name===val)){ showMessage('Compétence déjà existante dans cette branche','error'); return; } 
+    
+    // Ajout du tableau subskills (obligatoire pour le 4ème niveau)
+    arr.push({name:val,level,color, subskills:[]}); 
+    
+    document.getElementById('skillInput').value=''; 
+    saveData(); 
+    updateSkillList(); 
+    updateSubskillSkillSelect(); // Met à jour le sélecteur pour les sous-compétences
+    showMessage('Compétence ajoutée','success'); 
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+
+function removeSkill(branch,skill){ 
+    data.skills[branch]=(data.skills[branch]||[]).filter(s=>{
+        if(s.name===skill){
+            // Suppression des positions des sous-compétences
+            Object.keys(data.positions).filter(id => id.startsWith(`subskill:${branch}:${skill}`)).forEach(id => delete data.positions[id]);
+            return false;
+        }
+        return true;
+    });
+    
+    // Suppression de la position de la compétence elle-même
+    delete data.positions[`skill:${branch}:${skill}`];
+
+    saveData(); 
+    updateSkillList(); 
+    updateSubskillList();
+    updateSubskillSkillSelect();
+    showMessage('Compétence supprimée','success');
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+
+// NOUVELLE FONCTION : Ajout de sous-compétence
+function addSubskill(){
+    const val=document.getElementById('subskillInput').value.trim();
+    const branch=document.getElementById('subskillBranchSelect').value;
+    const skillName=document.getElementById('subskillSkillSelect').value;
+    const level=parseInt(document.getElementById('subskillLevelSelect').value,10)||2;
+
+    if(!val){ showMessage('Veuillez entrer une sous-compétence','error'); return; }
+    if(!branch || !skillName){ showMessage('Sélectionnez une branche et une compétence','error'); return; }
+
+    const skills = data.skills[branch] || [];
+    const parentSkill = skills.find(s => s.name === skillName);
+
+    if(!parentSkill){ showMessage('Compétence parente non trouvée','error'); return; }
+    
+    parentSkill.subskills = parentSkill.subskills || [];
+    if(parentSkill.subskills.find(ss => ss.name === val)){
+        showMessage('Sous-compétence déjà existante dans cette compétence','error'); 
+        return;
+    }
+
+    parentSkill.subskills.push({name:val, level}); // Pas de couleur spécifique pour subskill pour le moment
+    
+    document.getElementById('subskillInput').value=''; 
+    saveData(); 
+    updateSkillList(); // Mise à jour du compteur de sous-compétences
+    updateSubskillList();
+    showMessage('Sous-compétence ajoutée','success'); 
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+
+// NOUVELLE FONCTION : Suppression de sous-compétence
+function removeSubskill(branch, skill, subskill){
+    const skills = data.skills[branch] || [];
+    const parentSkill = skills.find(s => s.name === skill);
+
+    if(parentSkill){
+        parentSkill.subskills = (parentSkill.subskills || []).filter(ss => ss.name !== subskill);
+        // Suppression de la position de la sous-compétence
+        delete data.positions[`subskill:${branch}:${skill}:${subskill}`];
+    }
+
+    saveData();
+    updateSkillList(); // Mise à jour du compteur
+    updateSubskillList();
+    showMessage('Sous-compétence supprimée','success');
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+
 
 // Export / Import
 function exportJSON(){ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='carte_competences.json'; a.click(); URL.revokeObjectURL(url); showMessage('Export JSON généré','success'); }
-function importJSON(ev){ const f=ev.target.files&&ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); if(!obj) throw 'Invalid'; data=obj; saveData(); updateAllUI(); showMessage('Import réussi','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }catch(e){ showMessage('Fichier invalide','error'); } }; r.readAsText(f); ev.target.value=''; }
+function importJSON(ev){ const f=ev.target.files&&ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); if(!obj) throw 'Invalid'; 
+    data=obj; 
+    // Nettoyage de structure pour compatibilité avec le 4ème niveau
+    data.branches.forEach(b => {
+        (data.skills[b.name]||[]).forEach(s => {
+            s.subskills = s.subskills || []; // Assure la présence du tableau
+        });
+    });
+    saveData(); 
+    updateAllUI(); 
+    showMessage('Import réussi','success'); 
+    try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }catch(e){ showMessage('Fichier invalide','error'); } }; r.readAsText(f); ev.target.value=''; }
 
 // Centrage des noeuds (Supprime les positions enregistrées)
 function centerNodes(){
@@ -275,9 +505,10 @@ function centerNodes(){
         return;
     }
     
-    if(confirm('Ceci va supprimer toutes les positions enregistrées des branches et des compétences pour recentrer la carte. Continuer ?')){
+    if(confirm('Ceci va supprimer toutes les positions enregistrées des branches et des compétences/sous-compétences pour recentrer la carte. Continuer ?')){
         data.positions = {};
         // Initialise la position du centre au milieu du canevas
+        ensureCanvas();
         data.positions['center'] = { x: canvas.width/2, y: canvas.height/2 };
         saveData();
         view._resetScale = true; // Force le recalcul du zoom
@@ -287,22 +518,88 @@ function centerNodes(){
 }
 
 // Garden/example/reset
-function loadGardenMode(){ data={ center:'Mes Compétences', branches:[ {name:'Hard skills',color:'#3b82f6'},{name:'Soft skills',color:'#f59e0b'} ], skills:{ 'Hard skills':[], 'Soft skills':[] }, positions: data.positions||{} }; saveData(); updateAllUI(); showMessage('Mode Jardin chargé — triez vos compétences en Hard / Soft','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
-function loadExample(){ data={ center:'Mes Compétences', branches:[ {name:'Techniques',color:'#3b82f6'},{name:'Relationnelles',color:'#f59e0b'},{name:'Gestion',color:'#10b981'} ], skills:{ 'Techniques':[ {name:'Excel',level:3,color:'#3b82f6'},{name:'JS',level:2,color:'#60a5fa'}], 'Relationnelles':[ {name:'Communication',level:3,color:'#f59e0b'}], 'Gestion':[ {name:'Planification',level:2,color:'#10b981'}] }, positions: {} }; saveData(); updateAllUI(); showMessage('Exemple chargé','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } }
-function resetAll(){ if(!confirm('Réinitialiser toutes les données ?')) return; data={center:null,branches:[],skills:{},positions:{}}; saveData(); updateAllUI(); showMessage('Réinitialisé','success'); }
+function loadGardenMode(){ 
+    data={ 
+        center:'Mes Compétences', 
+        branches:[ 
+            {name:'Hard skills',color:'#3b82f6'},
+            {name:'Soft skills',color:'#f59e0b'} 
+        ], 
+        skills:{ 
+            'Hard skills':[
+                {name:'Excel',level:3,color:'#3b82f6', subskills:[{name:'VBA',level:2},{name:'TCD',level:3}]},
+                {name:'Python',level:2,color:'#60a5fa', subskills:[]}
+            ], 
+            'Soft skills':[
+                {name:'Communication',level:3,color:'#f59e0b', subskills:[]},
+                {name:'Esprit d\'équipe',level:2,color:'#f9a8d4', subskills:[{name:'Gestion conflit',level:2}]}
+            ] 
+        }, 
+        positions: data.positions||{} 
+    }; 
+    saveData(); updateAllUI(); showMessage('Mode Jardin chargé — triez vos compétences en Hard / Soft','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
 
-function updateAllUI(){ updateCenterDisplay(); updateBranchList(); updateSkillList(); updateSkillBranchSelect(); updateLegendColors(); }
+function loadExample(){ 
+    data={ 
+        center:'Mes Compétences', 
+        branches:[ 
+            {name:'Techniques',color:'#3b82f6'},
+            {name:'Relationnelles',color:'#f59e0b'},
+            {name:'Gestion',color:'#10b981'} 
+        ], 
+        skills:{ 
+            'Techniques':[ 
+                {name:'Excel',level:3,color:'#3b82f6', subskills:[{name:'VBA',level:2},{name:'TCD',level:3}]},
+                {name:'JS',level:2,color:'#60a5fa', subskills:[{name:'Framework',level:2}]},
+            ], 
+            'Relationnelles':[ 
+                {name:'Communication',level:3,color:'#f59e0b', subskills:[{name:'Ecoute',level:3}]},
+            ], 
+            'Gestion':[ 
+                {name:'Planification',level:2,color:'#10b981', subskills:[]},
+            ] 
+        }, 
+        positions: {} 
+    }; 
+    saveData(); updateAllUI(); showMessage('Exemple chargé','success'); try{ generateMindmap(); }catch(e){ console.error(e); showMessage('Erreur lors du dessin','error'); } 
+}
+function resetAll(){ 
+    if(!confirm('Réinitialiser toutes les données ?')) return; 
+    data={center:null,branches:[],skills:{},positions:{}}; 
+    saveData(); 
+    updateAllUI(); 
+    clearCanvasLocal();
+    showMessage('Réinitialisé','success'); 
+}
+
+function updateAllUI(){ 
+    updateCenterDisplay(); 
+    updateBranchList(); 
+    updateSkillList(); 
+    updateSubskillList(); // NOUVEAU
+    updateSkillBranchSelect(); 
+    updateLegendColors(); 
+}
 
 // Node id helper
-function nodeIdFor(n){ if(n.type==='center') return 'center'; if(n.type==='branch') return `branch:${n.text}`; if(n.type==='skill') return `skill:${n.parentName}:${n.text}`; return n.type+':'+n.text; }
+function nodeIdFor(n){ 
+    if(n.type==='center') return 'center'; 
+    if(n.type==='branch') return `branch:${n.text}`; 
+    if(n.type==='skill') return `skill:${n.parentName}:${n.text}`; 
+    if(n.type==='subskill') return `subskill:${n.grandParentName}:${n.parentName}:${n.text}`; // NOUVEAU
+    return n.type+':'+n.text; 
+}
 
 // Dynamic radius based on text width
 function computeRadius(text, type, ctx){
-    if(!ctx) return type==='center' ? 48 : type==='branch' ? 28 : 14;
+    // Réduction du radius min pour la sous-compétence
+    if(!ctx) return type==='center' ? 48 : type==='branch' ? 28 : type==='skill' ? 14 : 10; 
     let fontSize, padding, rMin;
     if(type==='center'){ fontSize = 16; padding = 16; rMin = 48; }
     else if(type==='branch'){ fontSize = 12; padding = 12; rMin = 28; }
     else if(type==='skill'){ fontSize = 11; padding = 10; rMin = 14; }
+    else if(type==='subskill'){ fontSize = 10; padding = 8; rMin = 10; } // NOUVEAU
     else return 14;
 
     ctx.font = `bold ${fontSize}px Arial`;
@@ -315,7 +612,7 @@ function computeRadius(text, type, ctx){
 // Main drawing: computes layout but respects saved positions in data.positions
 function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossible d\'obtenir le contexte du canvas','error'); return; } 
  // basic checks
- if(!data.center){ showMessage('Définissez d\'abord le centre','error'); return; } if(data.branches.length===0){ showMessage('Ajoutez au moins une branche','error'); return; }
+ if(!data.center){ showMessage('Définissez d\'abord le centre','error'); return; } // if(data.branches.length===0){ showMessage('Ajoutez au moins une branche','error'); return; }
  
  // resize canvas to container size
  const container = document.getElementById('canvas-container'); const rect = container.getBoundingClientRect(); // set canvas pixel size
@@ -347,6 +644,7 @@ function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossib
  nodes.push(centerNode);
 
  const branchNodes = []; // Store branches to link skills
+ const skillNodes = {}; // Store skills to link subskills
  const branchCount = data.branches.length; 
  const angleStep = (Math.PI*2)/branchCount;
  const distance = 220 + branchCount * 10; // spread branches a bit more
@@ -365,7 +663,7 @@ function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossib
      const bid = `branch:${b.name}`;
      const branchPos = data.positions[bid] || { x: bx0, y: by0 };
      
-     const branchNode = {type:'branch', x:branchPos.x, y:branchPos.y, r:branchR, text:branchText, color:b.color};
+     const branchNode = {type:'branch', x:branchPos.x, y:branchPos.y, r:branchR, text:branchText, color:b.color, fullName: b.name};
      
      branchNodes.push(branchNode);
      nodes.push(branchNode);
@@ -387,9 +685,41 @@ function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossib
          const skid = `skill:${b.name}:${s.name}`;
          const skillPos = data.positions[skid] || { x: sx0, y: sy0 };
          
-         const skillNode = {type:'skill', x:skillPos.x, y:skillPos.y, r:radius, text:skillText, color:s.color||b.color, parentName:b.name, level:s.level };
+         const skillNode = {
+             type:'skill', x:skillPos.x, y:skillPos.y, r:radius, text:skillText, 
+             color:s.color||b.color, parentName:b.name, level:s.level, fullName: s.name
+         };
          
+         skillNodes[skid] = skillNode; // Stockage pour les sous-compétences
          nodes.push(skillNode);
+
+         // NOUVEAU : CALCUL DES SOUS-COMPÉTENCES
+         const subskills = (s.subskills || []);
+         const subSpread = Math.min(Math.PI/2, Math.PI/3 + subskills.length*0.05);
+         const subStart = a - subSpread/2; const subStep = subskills.length>0? subSpread/(subskills.length+1):0;
+         const subDistance = 80;
+
+         subskills.forEach((ss, subIdx) => {
+             const subA = subStart + subStep*(subIdx+1);
+             const ssx0 = skillPos.x + Math.cos(subA)*subDistance;
+             const ssy0 = skillPos.y + Math.sin(subA)*subDistance;
+
+             const subskillText = truncate(ss.name, 10);
+             const subRadius = computeRadius(subskillText, 'subskill', ctx);
+
+             const ssid = `subskill:${b.name}:${s.name}:${ss.name}`;
+             const subskillPos = data.positions[ssid] || { x: ssx0, y: ssy0 };
+
+             const subskillNode = {
+                type:'subskill', x:subskillPos.x, y:subskillPos.y, r:subRadius, text:subskillText,
+                color:s.color||b.color, // Hérite de la couleur de la compétence
+                grandParentName: b.name,
+                parentName: s.name,
+                level: ss.level
+             };
+             nodes.push(subskillNode);
+         });
+         // FIN NOUVEAU
      });
  });
 
@@ -397,12 +727,20 @@ function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossib
  currentNodes = nodes.map(n=>{ 
      const id = nodeIdFor(n);
      if(n.type === 'skill'){
-         const parentBranch = branchNodes.find(b=>b.text===truncate(n.parentName,12));
+         const parentBranch = branchNodes.find(b=>b.fullName===n.parentName); // Utiliser fullName
          // Fixe la compétence à la position actuelle (sauvegardée ou par défaut) de la branche parente
          n.parent = { x: parentBranch.x, y: parentBranch.y };
      } else if (n.type === 'branch'){
          // Fixe la branche à la position actuelle du centre
          n.parent = { x: centerNode.x, y: centerNode.y };
+     } else if (n.type === 'subskill'){ // NOUVEAU : PARENT DE LA SOUS-COMPÉTENCE
+        const parentSkill = skillNodes[`skill:${n.grandParentName}:${n.parentName}`];
+        if (parentSkill) {
+            n.parent = { x: parentSkill.x, y: parentSkill.y };
+        } else {
+            // Failsafe: link to center or branch
+            n.parent = { x: centerNode.x, y: centerNode.y };
+        }
      }
      return {...n, id}; 
  });
@@ -426,9 +764,7 @@ function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossib
  clearCanvasLocal(); ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale);
 
  // draw center
- currentNodes.filter(n=>n.type==='center').forEach(n=>{ 
-    // Le centre est le point de départ de toutes les lignes des branches
- });
+ // Le centre est le point de départ de toutes les lignes des branches
  
  // draw branches
  currentNodes.filter(n=>n.type==='branch').forEach(bn=>{ 
@@ -452,6 +788,29 @@ function generateMindmap(){ try{ ensureCanvas(); if(!ctx){ showMessage('Impossib
      
      ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; 
      ctx.fillText(sn.text, sn.x, sn.y); 
+ });
+
+ // NOUVEAU : draw subskills
+ currentNodes.filter(n=>n.type==='subskill').forEach(ssn=>{ 
+     const parentSkillNode = currentNodes.find(n => n.id === `skill:${ssn.grandParentName}:${ssn.parentName}`);
+     const parentX = parentSkillNode ? parentSkillNode.x : ssn.parent.x;
+     const parentY = parentSkillNode ? parentSkillNode.y : ssn.parent.y;
+     
+     ctx.strokeStyle = hexToRgba(ssn.color||'#10b981',0.15); ctx.lineWidth=1; 
+     ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(ssn.x, ssn.y); ctx.stroke(); // Ligne Compétence -> Sous-Compétence
+     ctx.fillStyle = ssn.color||'#10b981'; 
+     ctx.globalAlpha = 0.8; // Transparence pour le 4ème niveau
+     ctx.beginPath(); ctx.arc(ssn.x,ssn.y,ssn.r,0,Math.PI*2); ctx.fill(); 
+     ctx.globalAlpha = 1.0;
+     
+     // Pastille de niveau sur la carte
+     ctx.fillStyle = levelColor(ssn.level);
+     ctx.beginPath();
+     ctx.arc(ssn.x + ssn.r - 3, ssn.y - ssn.r + 3, 3, 0, Math.PI*2); // Petit cercle en haut à droite
+     ctx.fill();
+     
+     ctx.fillStyle='#fff'; ctx.font='bold 10px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; 
+     ctx.fillText(ssn.text, ssn.x, ssn.y); 
  });
  
  // Redessine le centre en dernier pour qu'il soit au-dessus de tout
@@ -482,6 +841,7 @@ function findNodeAtScreen(px,py){ const world = screenToWorld(px,py); for(let i=
 
 // Pointer event handlers (Mise à jour pour gérer le centre)
 function onPointerDown(e){ ensureCanvas(); if(!canvas) return; const isLeft = e.button===0; const isRight = e.button===2; const shouldPan = isRight || (isLeft && e.ctrlKey); if(shouldPan){ panState.panning = true; panState.startX = e.clientX; panState.startY = e.clientY; panState.origX = view.x; panState.origY = view.y; try{ canvas.setPointerCapture(e.pointerId);}catch(_){} return; } const hit = findNodeAtScreen(e.clientX, e.clientY); if(hit){ dragState.dragging = true; dragState.nodeId = hit.id; dragState.startX = e.clientX; dragState.startY = e.clientY; dragState.origX = hit.x; dragState.origY = hit.y; try{ canvas.setPointerCapture(e.pointerId);}catch(_){} } }
+
 function onPointerMove(e){ ensureCanvas(); if(!canvas) return; if(panState.panning){ const dx = e.clientX - panState.startX; const dy = e.clientY - panState.startY; view.x = panState.origX + dx; view.y = panState.origY + dy; generateMindmap(); return; } if(dragState.dragging && dragState.nodeId){ const n = currentNodes.find(n=>n.id===dragState.nodeId); if(!n) return; 
     const world = screenToWorld(e.clientX,e.clientY);
     
@@ -489,7 +849,7 @@ function onPointerMove(e){ ensureCanvas(); if(!canvas) return; if(panState.panni
     n.x = world.x; 
     n.y = world.y; 
 
-    // Mettre à jour la position du centre pour les nœuds branches
+    // Gestion des liens parents/enfants pour l'affichage immédiat
     const centerNode = currentNodes.find(c => c.type === 'center');
     
     // Si on bouge le centre, on met à jour toutes les branches parentes (pour l'affichage immédiat)
@@ -501,12 +861,19 @@ function onPointerMove(e){ ensureCanvas(); if(!canvas) return; if(panState.panni
 
     // Si on bouge une branche, on met à jour toutes les compétences parentes (pour l'affichage immédiat)
     if (n.type === 'branch') {
-        currentNodes.filter(s => s.type === 'skill' && s.parentName === n.text).forEach(s => {
+        currentNodes.filter(s => s.type === 'skill' && s.parentName === n.fullName).forEach(s => {
             s.parent = { x: n.x, y: n.y };
         });
     }
 
-    // Redraw optimisé pour le drag
+    // Si on bouge une compétence, on met à jour toutes les sous-compétences parentes (pour l'affichage immédiat)
+    if (n.type === 'skill') {
+        currentNodes.filter(ss => ss.type === 'subskill' && ss.parentName === n.fullName).forEach(ss => {
+            ss.parent = { x: n.x, y: n.y };
+        });
+    }
+
+    // Redraw optimisé pour le drag (répétition du code de dessin)
     clearCanvasLocal(); ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale); 
     
     // Dessin du centre
@@ -541,6 +908,29 @@ function onPointerMove(e){ ensureCanvas(); if(!canvas) return; if(panState.panni
         
         ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(sn.text, sn.x, sn.y); 
     }); 
+
+    // Dessin des sous-compétences et liens (Nouveau)
+    currentNodes.filter(ss => ss.type === 'subskill').forEach(ssn => {
+        const parentSkillNode = currentNodes.find(n => n.id === `skill:${ssn.grandParentName}:${ssn.parentName}`);
+        const parentX = parentSkillNode ? parentSkillNode.x : ssn.parent.x;
+        const parentY = parentSkillNode ? parentSkillNode.y : ssn.parent.y;
+
+        ctx.strokeStyle = hexToRgba(ssn.color||'#10b981',0.15); ctx.lineWidth=1; 
+        ctx.globalAlpha = 0.8; 
+        ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(ssn.x, ssn.y); ctx.stroke(); 
+
+        ctx.fillStyle = ssn.color||'#10b981'; 
+        ctx.beginPath(); ctx.arc(ssn.x,ssn.y,ssn.r,0,Math.PI*2); ctx.fill(); 
+        ctx.globalAlpha = 1.0;
+
+        // Pastille de niveau
+        ctx.fillStyle = levelColor(ssn.level);
+        ctx.beginPath();
+        ctx.arc(ssn.x + ssn.r - 3, ssn.y - ssn.r + 3, 3, 0, Math.PI*2); 
+        ctx.fill();
+
+        ctx.fillStyle='#fff'; ctx.font='bold 10px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(ssn.text, ssn.x, ssn.y); 
+    });
     
     ctx.restore(); 
 } }
@@ -557,7 +947,7 @@ function onPointerUp(e){ ensureCanvas(); if(!canvas) return;
     if(dragState.dragging && dragState.nodeId){ 
         const n = currentNodes.find(n=>n.id===dragState.nodeId); 
         if(n){ 
-            // Enregistre la nouvelle position du nœud (centre, branche ou compétence)
+            // Enregistre la nouvelle position du nœud (centre, branche, compétence ou sous-compétence)
             persistNodePosition(n.id, n.x, n.y); 
         } 
         dragState.dragging=false; 
@@ -580,13 +970,18 @@ window.addEventListener('load', ()=>{
     document.getElementById('addCenterBtn').addEventListener('click', addCenter);
     document.getElementById('addBranchBtn').addEventListener('click', addBranch);
     document.getElementById('addSkillBtn').addEventListener('click', addSkill);
+    document.getElementById('addSubskillBtn').addEventListener('click', addSubskill); // NOUVEAU
+    
+    // Mise à jour de la liste des compétences quand la branche change
+    document.getElementById('subskillBranchSelect').addEventListener('change', updateSubskillSkillSelect); // NOUVEAU
+
     // Le bouton drawBtn est maintenant un dropdown, mais l'action par défaut reste generateMindmap
     document.getElementById('drawBtn').addEventListener('click', generateMindmap); 
     document.getElementById('downloadPng').addEventListener('click', downloadImage);
     document.getElementById('exportJson').addEventListener('click', exportJSON);
     document.getElementById('importFile').addEventListener('change', importJSON);
     document.getElementById('resetAll').addEventListener('click', resetAll);
-    document.getElementById('clearStorage').addEventListener('click', ()=>{ if(confirm('Supprimer la sauvegarde locale ?')){ localStorage.removeItem(STORAGE_KEY); showMessage('Sauvegarde supprimée','success'); } });
+    document.getElementById('clearStorage').addEventListener('click', ()=>{ if(confirm('Supprimer la sauvegarde locale ?')) { localStorage.removeItem(STORAGE_KEY); showMessage('Sauvegarde supprimée','success'); } });
     document.getElementById('loadExample').addEventListener('click', loadExample);
     document.getElementById('gardenMode').addEventListener('click', loadGardenMode);
 
@@ -606,7 +1001,15 @@ window.addEventListener('load', ()=>{
         }
     }
 
-    loadData(); if(data.center) setTimeout(()=>{ try{ generateMindmap(); }catch(e){ console.error(e); } },200);
+    loadData(); 
+    // Redimensionnement initial du canvas
+    const container = document.getElementById('canvas-container'); 
+    const rect = container.getBoundingClientRect(); 
+    const dpr = window.devicePixelRatio || 1; 
+    canvas.width = Math.max(800, Math.min(2000, Math.floor(rect.width * dpr)));
+    canvas.height = Math.max(500, Math.floor((rect.height||700) * dpr));
+    
+    if(data.center) setTimeout(()=>{ try{ generateMindmap(); }catch(e){ console.error(e); } },200);
 });
 
 // auto save
