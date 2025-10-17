@@ -35,6 +35,37 @@
         #canvas-container{ background:#f8f9fa; border:2px dashed #667eea; border-radius:10px; min-height:520px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative }
         canvas{ display:block; width:100%; height:100%; touch-action: none; }
         
+        /* NOUVEAU: Contrôles Zoom/Pan */
+        #canvas-controls {
+            position: absolute;
+            bottom: 15px; /* Ajustement pour la responsivité */
+            right: 15px; /* Ajustement pour la responsivité */
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+        }
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(102, 126, 234, 0.9); /* #667eea avec légère opacité */
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: background 0.2s;
+            line-height: 1; /* Pour centrer le texte/symbole */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        .control-btn:hover {
+            background: rgba(84, 108, 216, 0.9);
+        }
+        
         /* Misc */
         .legend{ display:flex; gap:12px; margin-top:12px; flex-wrap: wrap; }
         .legend-item{ display:flex; align-items:center; gap:4px }
@@ -145,7 +176,7 @@
                         <button id="drawBtn">🎯 Redessiner / Mise à jour</button>
                         <div class="dropdown-content">
                             <button onclick="generateMindmap()">🔄 Mise à jour des liens</button>
-                            <button onclick="centerNodes()">🏠 Recentrer la carte</button>
+                            <button onclick="centerNodes()">🏠 Recentrer la carte (positions des nœuds)</button>
                         </div>
                     </div>
                 </div>
@@ -158,7 +189,13 @@
                 <h2>Visualisation & Export</h2>
                 <div id="canvas-container">
                     <canvas id="mindmapCanvas" width="1200" height="700"></canvas>
-                </div>
+                    
+                    <div id="canvas-controls">
+                        <button class="control-btn" onclick="zoomIn()" title="Zoomer">+</button>
+                        <button class="control-btn" onclick="zoomOut()" title="Dézoomer">−</button>
+                        <button class="control-btn" onclick="resetPanZoom()" title="Réinitialiser Pan/Zoom">⌂</button>
+                    </div>
+                    </div>
 
                 <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
                     <button id="downloadPng">📥 Télécharger PNG</button>
@@ -511,11 +548,45 @@ function centerNodes(){
         ensureCanvas();
         data.positions['center'] = { x: canvas.width/2, y: canvas.height/2 };
         saveData();
-        view._resetScale = true; // Force le recalcul du zoom
-        generateMindmap();
+        resetPanZoom(); // Réinitialise aussi le pan et zoom de la vue
         showMessage('Carte recentrée et positions réinitialisées.','success');
     }
 }
+
+// NOUVELLES FONCTIONS DE ZOOM
+function adjustZoom(delta) {
+    ensureCanvas();
+    // Zoom autour du centre de la vue (viewport)
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const newScale = Math.max(0.3, Math.min(3, view.scale * delta));
+    
+    // Applique la transformation de zoom autour du centre
+    view.x = cx - (cx - view.x) * (newScale / view.scale);
+    view.y = cy - (cy - view.y) * (newScale / view.scale);
+    view.scale = newScale;
+    generateMindmap();
+}
+
+function zoomIn(){
+    adjustZoom(1.25); // Facteur de zoom
+}
+
+function zoomOut(){
+    adjustZoom(0.8); // Facteur de dézoom
+}
+
+function resetPanZoom(){
+    view.x = 0; 
+    view.y = 0; 
+    view.scale = 1; 
+    view._initialized = false;
+    view._resetScale = true; // Force le recalcul de l'échelle de base
+    generateMindmap();
+    showMessage('Vue réinitialisée (Pan et Zoom)','success');
+}
+// FIN NOUVELLES FONCTIONS DE ZOOM
+
 
 // Garden/example/reset
 function loadGardenMode(){ 
@@ -840,100 +911,141 @@ function persistNodePosition(id, x, y){
 function findNodeAtScreen(px,py){ const world = screenToWorld(px,py); for(let i=currentNodes.length-1;i>=0;i--){ const n=currentNodes[i]; const dx = world.x - n.x; const dy = world.y - n.y; if(Math.sqrt(dx*dx+dy*dy) <= n.r + 6) return n; } return null; }
 
 // Pointer event handlers (Mise à jour pour gérer le centre)
-function onPointerDown(e){ ensureCanvas(); if(!canvas) return; const isLeft = e.button===0; const isRight = e.button===2; const shouldPan = isRight || (isLeft && e.ctrlKey); if(shouldPan){ panState.panning = true; panState.startX = e.clientX; panState.startY = e.clientY; panState.origX = view.x; panState.origY = view.y; try{ canvas.setPointerCapture(e.pointerId);}catch(_){} return; } const hit = findNodeAtScreen(e.clientX, e.clientY); if(hit){ dragState.dragging = true; dragState.nodeId = hit.id; dragState.startX = e.clientX; dragState.startY = e.clientY; dragState.origX = hit.x; dragState.origY = hit.y; try{ canvas.setPointerCapture(e.pointerId);}catch(_){} } }
+function onPointerDown(e){ ensureCanvas(); if(!canvas) return; 
+    // Empêche le drag/pan si l'on clique sur un bouton de contrôle
+    if (e.target.closest('#canvas-controls')) return; 
 
-function onPointerMove(e){ ensureCanvas(); if(!canvas) return; if(panState.panning){ const dx = e.clientX - panState.startX; const dy = e.clientY - panState.startY; view.x = panState.origX + dx; view.y = panState.origY + dy; generateMindmap(); return; } if(dragState.dragging && dragState.nodeId){ const n = currentNodes.find(n=>n.id===dragState.nodeId); if(!n) return; 
-    const world = screenToWorld(e.clientX,e.clientY);
+    const isLeft = e.button===0; 
+    const isRight = e.button===2; 
+    const shouldPan = isRight || (isLeft && e.ctrlKey); 
     
-    // Déplace le nœud
-    n.x = world.x; 
-    n.y = world.y; 
+    if(shouldPan){ 
+        panState.panning = true; 
+        panState.startX = e.clientX; 
+        panState.startY = e.clientY; 
+        panState.origX = view.x; 
+        panState.origY = view.y; 
+        try{ canvas.setPointerCapture(e.pointerId);}catch(_){} 
+        return; 
+    } 
+    
+    const hit = findNodeAtScreen(e.clientX, e.clientY); 
+    if(hit){ 
+        dragState.dragging = true; 
+        dragState.nodeId = hit.id; 
+        dragState.startX = e.clientX; 
+        dragState.startY = e.clientY; 
+        dragState.origX = hit.x; 
+        dragState.origY = hit.y; 
+        try{ canvas.setPointerCapture(e.pointerId);}catch(_){} 
+    } 
+}
 
-    // Gestion des liens parents/enfants pour l'affichage immédiat
-    const centerNode = currentNodes.find(c => c.type === 'center');
+function onPointerMove(e){ ensureCanvas(); if(!canvas) return; 
+    if(panState.panning){ 
+        const dx = e.clientX - panState.startX; 
+        const dy = e.clientY - panState.startY; 
+        view.x = panState.origX + dx; 
+        view.y = panState.origY + dy; 
+        generateMindmap(); 
+        return; 
+    } 
     
-    // Si on bouge le centre, on met à jour toutes les branches parentes (pour l'affichage immédiat)
-    if (n.type === 'center') {
-        currentNodes.filter(b => b.type === 'branch').forEach(b => {
-            b.parent = { x: n.x, y: n.y };
-        });
-    }
-
-    // Si on bouge une branche, on met à jour toutes les compétences parentes (pour l'affichage immédiat)
-    if (n.type === 'branch') {
-        currentNodes.filter(s => s.type === 'skill' && s.parentName === n.fullName).forEach(s => {
-            s.parent = { x: n.x, y: n.y };
-        });
-    }
-
-    // Si on bouge une compétence, on met à jour toutes les sous-compétences parentes (pour l'affichage immédiat)
-    if (n.type === 'skill') {
-        currentNodes.filter(ss => ss.type === 'subskill' && ss.parentName === n.fullName).forEach(ss => {
-            ss.parent = { x: n.x, y: n.y };
-        });
-    }
-
-    // Redraw optimisé pour le drag (répétition du code de dessin)
-    clearCanvasLocal(); ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale); 
-    
-    // Dessin du centre
-    currentNodes.filter(c => c.type === 'center').forEach(c => { 
-        ctx.beginPath(); ctx.fillStyle=c.color; ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill(); 
-        ctx.fillStyle='#fff'; ctx.font='bold 16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(c.text, c.x, c.y); 
-    }); 
-    
-    // Dessin des branches et liens
-    currentNodes.filter(b => b.type === 'branch').forEach(bn => { 
-        ctx.strokeStyle = bn.color || '#fbbf24'; ctx.lineWidth=4; 
-        ctx.beginPath(); ctx.moveTo(centerNode.x,centerNode.y); ctx.lineTo(bn.x,bn.y); ctx.stroke(); 
-        ctx.fillStyle = bn.color || '#fbbf24'; ctx.beginPath(); ctx.arc(bn.x,bn.y,bn.r,0,Math.PI*2); ctx.fill(); 
-        ctx.fillStyle='#fff'; ctx.font='bold 12px Arial'; ctx.fillText(bn.text, bn.x, bn.y); 
-    }); 
-    
-    // Dessin des compétences et liens
-    currentNodes.filter(s => s.type === 'skill').forEach(sn => { 
-        const parentBranch = currentNodes.find(b => b.type === 'branch' && b.text === truncate(sn.parentName, 12));
-        const parentX = parentBranch ? parentBranch.x : sn.parent.x;
-        const parentY = parentBranch ? parentBranch.y : sn.parent.y;
+    if(dragState.dragging && dragState.nodeId){ 
+        const n = currentNodes.find(n=>n.id===dragState.nodeId); 
+        if(!n) return; 
+        const world = screenToWorld(e.clientX,e.clientY);
         
-        ctx.strokeStyle = hexToRgba(sn.color||'#10b981',0.35); ctx.lineWidth=2; 
-        ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(sn.x, sn.y); ctx.stroke(); 
-        ctx.fillStyle = sn.color||'#10b981'; ctx.beginPath(); ctx.arc(sn.x,sn.y,sn.r,0,Math.PI*2); ctx.fill(); 
+        // Déplace le nœud
+        n.x = world.x; 
+        n.y = world.y; 
+
+        // Gestion des liens parents/enfants pour l'affichage immédiat
+        const centerNode = currentNodes.find(c => c.type === 'center');
         
-        // Pastille de niveau
-        ctx.fillStyle = levelColor(sn.level);
-        ctx.beginPath();
-        ctx.arc(sn.x + sn.r - 5, sn.y - sn.r + 5, 4, 0, Math.PI*2); 
-        ctx.fill();
+        // Si on bouge le centre, on met à jour toutes les branches parentes (pour l'affichage immédiat)
+        if (n.type === 'center') {
+            currentNodes.filter(b => b.type === 'branch').forEach(b => {
+                b.parent = { x: n.x, y: n.y };
+            });
+        }
+
+        // Si on bouge une branche, on met à jour toutes les compétences parentes (pour l'affichage immédiat)
+        if (n.type === 'branch') {
+            currentNodes.filter(s => s.type === 'skill' && s.parentName === n.fullName).forEach(s => {
+                s.parent = { x: n.x, y: n.y };
+            });
+        }
+
+        // Si on bouge une compétence, on met à jour toutes les sous-compétences parentes (pour l'affichage immédiat)
+        if (n.type === 'skill') {
+            currentNodes.filter(ss => ss.type === 'subskill' && ss.parentName === n.fullName).forEach(ss => {
+                ss.parent = { x: n.x, y: n.y };
+            });
+        }
+
+        // Redraw optimisé pour le drag (répétition du code de dessin)
+        clearCanvasLocal(); ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale); 
         
-        ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(sn.text, sn.x, sn.y); 
-    }); 
+        // Dessin du centre
+        currentNodes.filter(c => c.type === 'center').forEach(c => { 
+            ctx.beginPath(); ctx.fillStyle=c.color; ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill(); 
+            ctx.fillStyle='#fff'; ctx.font='bold 16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(c.text, c.x, c.y); 
+        }); 
+        
+        // Dessin des branches et liens
+        currentNodes.filter(b => b.type === 'branch').forEach(bn => { 
+            ctx.strokeStyle = bn.color || '#fbbf24'; ctx.lineWidth=4; 
+            ctx.beginPath(); ctx.moveTo(centerNode.x,centerNode.y); ctx.lineTo(bn.x,bn.y); ctx.stroke(); 
+            ctx.fillStyle = bn.color || '#fbbf24'; ctx.beginPath(); ctx.arc(bn.x,bn.y,bn.r,0,Math.PI*2); ctx.fill(); 
+            ctx.fillStyle='#fff'; ctx.font='bold 12px Arial'; ctx.fillText(bn.text, bn.x, bn.y); 
+        }); 
+        
+        // Dessin des compétences et liens
+        currentNodes.filter(s => s.type === 'skill').forEach(sn => { 
+            const parentBranch = currentNodes.find(b => b.type === 'branch' && b.text === truncate(sn.parentName, 12));
+            const parentX = parentBranch ? parentBranch.x : sn.parent.x;
+            const parentY = parentBranch ? parentBranch.y : sn.parent.y;
+            
+            ctx.strokeStyle = hexToRgba(sn.color||'#10b981',0.35); ctx.lineWidth=2; 
+            ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(sn.x, sn.y); ctx.stroke(); 
+            ctx.fillStyle = sn.color||'#10b981'; ctx.beginPath(); ctx.arc(sn.x,sn.y,sn.r,0,Math.PI*2); ctx.fill(); 
+            
+            // Pastille de niveau
+            ctx.fillStyle = levelColor(sn.level);
+            ctx.beginPath();
+            ctx.arc(sn.x + sn.r - 5, sn.y - sn.r + 5, 4, 0, Math.PI*2); 
+            ctx.fill();
+            
+            ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(sn.text, sn.x, sn.y); 
+        }); 
 
-    // Dessin des sous-compétences et liens (Nouveau)
-    currentNodes.filter(ss => ss.type === 'subskill').forEach(ssn => {
-        const parentSkillNode = currentNodes.find(n => n.id === `skill:${ssn.grandParentName}:${ssn.parentName}`);
-        const parentX = parentSkillNode ? parentSkillNode.x : ssn.parent.x;
-        const parentY = parentSkillNode ? parentSkillNode.y : ssn.parent.y;
+        // Dessin des sous-compétences et liens (Nouveau)
+        currentNodes.filter(ss => ss.type === 'subskill').forEach(ssn => {
+            const parentSkillNode = currentNodes.find(n => n.id === `skill:${ssn.grandParentName}:${ssn.parentName}`);
+            const parentX = parentSkillNode ? parentSkillNode.x : ssn.parent.x;
+            const parentY = parentSkillNode ? parentSkillNode.y : ssn.parent.y;
 
-        ctx.strokeStyle = hexToRgba(ssn.color||'#10b981',0.15); ctx.lineWidth=1; 
-        ctx.globalAlpha = 0.8; 
-        ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(ssn.x, ssn.y); ctx.stroke(); 
+            ctx.strokeStyle = hexToRgba(ssn.color||'#10b981',0.15); ctx.lineWidth=1; 
+            ctx.globalAlpha = 0.8; 
+            ctx.beginPath(); ctx.moveTo(parentX, parentY); ctx.lineTo(ssn.x, ssn.y); ctx.stroke(); 
 
-        ctx.fillStyle = ssn.color||'#10b981'; 
-        ctx.beginPath(); ctx.arc(ssn.x,ssn.y,ssn.r,0,Math.PI*2); ctx.fill(); 
-        ctx.globalAlpha = 1.0;
+            ctx.fillStyle = ssn.color||'#10b981'; 
+            ctx.beginPath(); ctx.arc(ssn.x,ssn.y,ssn.r,0,Math.PI*2); ctx.fill(); 
+            ctx.globalAlpha = 1.0;
 
-        // Pastille de niveau
-        ctx.fillStyle = levelColor(ssn.level);
-        ctx.beginPath();
-        ctx.arc(ssn.x + ssn.r - 3, ssn.y - ssn.r + 3, 3, 0, Math.PI*2); 
-        ctx.fill();
+            // Pastille de niveau
+            ctx.fillStyle = levelColor(ssn.level);
+            ctx.beginPath();
+            ctx.arc(ssn.x + ssn.r - 3, ssn.y - ssn.r + 3, 3, 0, Math.PI*2); 
+            ctx.fill();
 
-        ctx.fillStyle='#fff'; ctx.font='bold 10px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(ssn.text, ssn.x, ssn.y); 
-    });
-    
-    ctx.restore(); 
-} }
+            ctx.fillStyle='#fff'; ctx.font='bold 10px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(ssn.text, ssn.x, ssn.y); 
+        });
+        
+        ctx.restore(); 
+    } 
+}
 
 function onPointerUp(e){ ensureCanvas(); if(!canvas) return; 
     
